@@ -1,7 +1,7 @@
 {
   "name": "gemini-bridge-mcp",
-  "version": "1.0.0",
-  "description": "MCP server that drives the logged-in Google Gemini web UI: ask questions (multimodal), generate images (Nano Banana) and videos (Veo) — no API key.",
+  "version": "2.0.0",
+  "description": "Comprehensive MCP server for Google Gemini with NO API key: Gemini-CLI backend (ask, web search, deep research, code/file/URL analysis, structured output) + web-UI backend for image (Nano Banana) and video (Veo) generation.",
   "type": "module",
   "bin": {
     "gemini-bridge-mcp": "server.js"
@@ -9,18 +9,23 @@
   "scripts": {
     "login": "node server.js login",
     "start": "node server.js",
-    "http": "node server.js http"
+    "http": "node server.js http",
+    "tools": "node server.js tools"
   },
   "keywords": [
     "mcp",
     "model-context-protocol",
     "gemini",
     "google-gemini",
+    "gemini-cli",
     "nano-banana",
     "veo",
-    "playwright",
+    "web-search",
+    "deep-research",
+    "code-analysis",
     "image-generation",
-    "video-generation"
+    "video-generation",
+    "playwright"
   ],
   "license": "MIT",
   "author": "NotFabii",

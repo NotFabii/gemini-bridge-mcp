@@ -1,48 +1,63 @@
 # gemini-bridge-mcp
 
-An **MCP server** that talks to the **logged-in Google Gemini web UI** through browser
-automation — so any MCP client (Claude Code, Claude Desktop, …) can use Gemini
-**without an API key**. It rides your existing Gemini subscription, exactly as if you
-typed in the browser yourself.
+A **comprehensive MCP server for Google Gemini that needs NO API key.** It combines two
+free backends so any MCP client (Claude Code, Claude Desktop, …) gets the full Gemini
+toolbox:
+
+- 🧠 **Gemini CLI backend** — Q&A, web search, deep research, code/file/URL analysis,
+  structured output, extraction, summarization. Official, robust (no DOM scraping),
+  free with your Google login. The model can autonomously use **read-only** tools
+  (search, read files/URLs) — it never edits your files (`--approval-mode plan`).
+- 🎨 **Web-UI backend** — **image** (Nano Banana) and **video** (Veo) generation, which
+  the free CLI can't do. Driven via Playwright against `gemini.google.com`.
+
+> Inspired by [rlabs-inc/gemini-mcp](https://github.com/rlabs-inc/gemini-mcp) (feature
+> breadth) and [eLyiN/gemini-bridge](https://github.com/eLyiN/gemini-bridge) (CLI bridge) —
+> but **API-key-free**: it uses the Gemini CLI + the web UI instead of the paid API.
 
 ## Tools
 
-| Tool | What it does |
-|---|---|
-| **`ask_gemini`** | Ask a question. Multimodal (attach images / PDFs / video / audio by path). Pick the model. |
-| **`generate_image`** | Generate an image with Gemini's image model (a.k.a. *Nano Banana*). Saves PNG(s). |
-| **`generate_video`** | Generate a video with Gemini's video model (*Veo*). Saves an MP4. |
-
-## How it works
-
-Uses [`playwright-core`](https://playwright.dev) to drive your **installed** Chromium
-browser (Chrome / Brave / Edge, auto-detected) against `gemini.google.com`, with a
-**persistent profile** so you log in only once. No official API, no key — it uses your
-normal Gemini quota.
-
-- Images (`blob:` URLs) are read back via a `<canvas>` export (works around Gemini's fetch CSP).
-- Videos (signed cross-origin URLs) are downloaded server-side with your session cookies.
-- Conversation continuity: by default follow-up calls stay in the **same** Gemini chat
-  (set `new_chat: true` to start fresh).
+| Tool | Group | Backend | What it does |
+|---|---|---|---|
+| `ask_gemini` | core | CLI→web | Ask anything. Attach `files` and/or a `directory` of code. Multimodal. |
+| `gemini_brainstorm` | core | CLI | Brainstorm N concrete ideas for a topic. |
+| `gemini_search` | research | CLI | Web search → grounded answer **with source URLs**. |
+| `gemini_deep_research` | research | CLI | Autonomous multi-step research → structured report + sources. |
+| `gemini_youtube` | research | CLI | Summarize / analyze a YouTube video. |
+| `gemini_analyze_code` | analysis | CLI | Review a codebase **folder** (bugs/security/perf/quality). |
+| `gemini_analyze_files` | analysis | CLI | Analyze images / PDFs / docs / text (multimodal). |
+| `gemini_analyze_url` | analysis | CLI | Fetch & analyze a web page. |
+| `gemini_compare_urls` | analysis | CLI | Fetch & compare multiple pages. |
+| `gemini_structured` | data | CLI | JSON output matching a schema you give (returns parsed JSON). |
+| `gemini_extract` | data | CLI | Extract named fields from text as JSON. |
+| `gemini_summarize` | data | CLI | Summarize text (short/medium/long). |
+| `gemini_count_tokens` | data | local | Rough, free token estimate (no API call). |
+| `generate_image` | media | Web UI | Generate image(s) with **Nano Banana**. Saves PNG(s). |
+| `generate_video` | media | Web UI | Generate a video with **Veo**. Saves an MP4. |
 
 ## Requirements
 
 - **Node.js 18+**
-- A **Chromium-based browser** installed (Chrome, Brave, or Edge)
-- A Google account with access to Gemini
+- **[Gemini CLI](https://github.com/google-gemini/gemini-cli)** for the CLI-backed tools
+  (everything except image/video): `npm i -g @google/gemini-cli`, then run `gemini` once
+  to log in with your Google account.
+- For **image/video** only: a **Chromium browser** (Chrome / Brave / Edge) + a one-time
+  web login (`npm run login`).
 
 ## Setup
 
 ```bash
-npm install        # installs deps — NO browser download, it uses your installed one
-npm run login      # one-time: a window opens, sign in to Google/Gemini
+npm install                       # server deps (no browser download)
+
+# CLI backend (for ask, search, research, analysis, ...):
+npm i -g @google/gemini-cli
+gemini                            # run once, sign in with Google, then exit
+
+# Web backend (only needed for generate_image / generate_video):
+npm run login                     # opens a window; sign in to Gemini once
 ```
 
-The login is stored in a local profile folder (`./.gemini-profile`, git-ignored).
-
 ## Use as an MCP server
-
-Add it to your MCP client config (use an **absolute** path to `server.js`):
 
 ```json
 {
@@ -62,77 +77,87 @@ Or with the Claude Code CLI:
 claude mcp add gemini-bridge --env GEMINI_HEADLESS=1 -- node /absolute/path/to/server.js
 ```
 
-## CLI (testing / maintenance)
+## Presets (control how many tools are exposed)
+
+15 tools can be a lot of context. Trim them via env vars:
 
 ```bash
-node server.js login                          # one-time login window
-node server.js check                          # is the profile logged in?
-node server.js ask "your question"
-node server.js ask --model=pro "your question"        # flash-lite | flash | pro
-node server.js ask --file=/path/to/img.png "describe this"
-node server.js image "a red sports car on a mountain road at sunset"
-node server.js video "a slow drone shot over a turquoise lake"
-node server.js dump                           # print button labels (selector maintenance)
-node server.js http                           # run as a Streamable-HTTP MCP server
+GEMINI_PRESET=minimal     # ask_gemini, gemini_search, generate_image
+GEMINI_PRESET=core        # core + media
+GEMINI_PRESET=research    # ask + research + URL tools
+GEMINI_PRESET=analysis    # ask + analysis + data
+GEMINI_PRESET=media       # ask + image/video
+GEMINI_PRESET=data        # ask + data tools
+GEMINI_PRESET=full        # everything (default)
+
+# Or pick exactly what you want (tool names and/or group names):
+GEMINI_TOOLS=ask_gemini,gemini_search,generate_image
 ```
-
-## `ask_gemini` parameters
-
-| Param | Required | Description |
-|---|---|---|
-| `prompt` | yes | The question / instruction. |
-| `files` | no | Absolute paths to attach (image / PDF / video / audio). |
-| `model` | no | `flash-lite`, `flash`, or `pro`. |
-| `new_chat` | no | `true` = start a fresh Gemini chat (default `false` = continue). |
-| `timeout_seconds` | no | Max wait (default 180; raise for video). |
 
 ## Environment variables
 
 | Variable | Effect |
 |---|---|
-| `GEMINI_HEADLESS=1` | Run invisibly (recommended for MCP use). |
-| `GEMINI_BROWSER_PATH` | Explicit path to `chrome.exe` / `brave.exe` / `msedge.exe` if auto-detect misses. |
-| `GEMINI_PROFILE_DIR` | Login profile folder (default `./.gemini-profile`). |
+| `GEMINI_BACKEND` | `auto` (default: CLI if available, else web), `cli`, or `web` — for `ask_gemini`. |
+| `GEMINI_PRESET` / `GEMINI_TOOLS` | Which tools to expose (see above). |
+| `GEMINI_HEADLESS=1` | Run the web UI invisibly (recommended). |
+| `GEMINI_BROWSER_PATH` | Path to chrome/brave/edge if auto-detect misses. |
+| `GEMINI_PROFILE_DIR` | Web login profile folder (default `./.gemini-profile`). |
 | `GEMINI_OUTPUT_DIR` | Where generated media is saved (default `./output`). |
-| `GEMINI_PORT` | Port for HTTP mode (default `7801`). |
-| `GEMINI_TLS_CERT` / `GEMINI_TLS_KEY` | Serve HTTP mode over **https** (e.g. a [mkcert](https://github.com/FiloSottile/mkcert) localhost cert). Defaults to `./certs/cert.pem` + `./certs/key.pem` if present. |
-| `GEMINI_DEBUG=1` | Debug screenshots (`debug-*.png`) + DOM dumps. |
+| `GEMINI_PORT` | HTTP mode port (default `7801`). |
+| `GEMINI_TLS_CERT` / `GEMINI_TLS_KEY` | Serve HTTP mode over https (else `./certs/cert.pem`+`key.pem`). |
 
-## HTTP / remote mode
+## CLI (testing)
 
-`node server.js http` serves a **Streamable HTTP** MCP endpoint at
-`http://localhost:7801/mcp` (CORS enabled). Drop `cert.pem` / `key.pem` into `./certs/`
-(or set `GEMINI_TLS_CERT` / `GEMINI_TLS_KEY`) to serve it over `https`.
+```bash
+node server.js tools                    # list enabled tools
+node server.js ask "your question"
+node server.js search "latest Node LTS?"
+node server.js image "a red sports car at sunset"
+node server.js video "a balloon over mountains"
+node server.js login | check | dump     # web-UI login / diagnostics
+node server.js http                      # run over Streamable HTTP
+```
 
-## ⚠️ Locale note (important)
+## Relation to rlabs-inc/gemini-mcp
 
-Some selectors match the **German** Gemini UI (e.g. `Dateien hochladen`,
-`Bild erstellen`, `Video erstellen`, `Modusauswahl öffnen`, `Jetzt ausprobieren`).
-If your Gemini is in another language, edit the marked values in the `SEL` object
-(and the `Jetzt ausprobieren` regex) in `server.js` to the matching labels —
-for English that's `Upload files`, `Create image`, `Create video`, etc.
-`node server.js dump` prints the current button labels to help.
+This server covers the major capability groups of `rlabs-inc/gemini-mcp` **without an API
+key** (CLI + web UI instead). A few of its tools are intentionally **not** included because
+they require the paid API or aren't feasible via the free CLI:
 
-## Maintenance
+- **Text-to-speech** (`speak`, `dialogue`, voices) — API-only.
+- **Context caching** (`create/query/list/delete cache`) — API-only (the CLI manages its
+  own context window).
+- **Image-edit sessions** & **async video polling** — our image/video generation is
+  synchronous (the tool waits and returns the file).
+- **Python code-execution sandbox** — for safety this isn't exposed as a tool; ask
+  `ask_gemini` with a coding prompt instead.
 
-Because this drives the **web UI**, Google's UI changes can break the selectors. They
-all live in the `SEL` object near the top of `server.js`. Run `node server.js dump` to
-print the current button labels and fix them.
+Everything else (search, deep research, code/text/document/image analysis, URL & YouTube
+analysis, structured output, extraction, summarization, image & video generation) is here.
+
+## ⚠️ Locale note
+
+Some **web-UI** selectors match the **German** Gemini UI (e.g. `Bild erstellen`,
+`Video erstellen`). If your Gemini UI is in another language, edit `SEL` in
+[`lib/web.js`](lib/web.js) (and the `Jetzt ausprobieren` regex) — English would be
+`Create image`, `Create video`, etc. `node server.js dump` prints current labels. The
+**CLI** tools are locale-independent.
 
 ## ⚠️ Disclaimer
 
-This automates the Gemini **web interface** of **your own** account. It uses **no official
-API**. Automating Google's web UI may violate Google's Terms of Service — **use at your own
-risk, for personal use only**. Don't be surprised if a UI change breaks it, or if heavy
-automated use gets your account rate-limited or flagged. Provided **"as is"**, without
-warranty. Not affiliated with Google or Anthropic. "Gemini", "Nano Banana" and "Veo" are
-products/trademarks of Google.
+The **web-UI** part automates Gemini's web interface of **your own** account; it uses **no
+official API**. Automating Google's web UI may violate Google's Terms of Service — **use at
+your own risk, for personal use only**. The CLI part uses Google's official `gemini` CLI.
+Provided **"as is"**, without warranty. Not affiliated with Google or Anthropic. "Gemini",
+"Nano Banana", "Veo" are products/trademarks of Google.
 
 ## Acknowledgements
 
-Designed and coded with the help of **[Claude Code](https://claude.com/claude-code)**
-(Anthropic's **Claude Opus 4.8**, with extended thinking) — from reverse-engineering the
-Gemini web UI selectors to the image/video extraction and the MCP wiring.
+- Designed and coded with the help of **[Claude Code](https://claude.com/claude-code)**
+  (Anthropic's **Claude Opus 4.8**, with extended thinking).
+- Feature inspiration: **[rlabs-inc/gemini-mcp](https://github.com/rlabs-inc/gemini-mcp)**
+  and **[eLyiN/gemini-bridge](https://github.com/eLyiN/gemini-bridge)**.
 
 ## License
 
